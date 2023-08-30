@@ -7,7 +7,7 @@ use diesel::{prelude::*, r2d2::ConnectionManager};
 use rust_texas::*;
 use std::{
     env,
-    fs::File,
+    fs::{File, self},
     io::{Read, Write},
     process, fmt::Display,
 };
@@ -373,7 +373,8 @@ fn parse_text(text: &mut String) -> Vec<Component> {
     // todo!()
 }
 
-/// Exports a single note to pdf.
+/// Exports a single note to pdf. This pdf and the latex file it came from will be located 
+/// in the bear database directory, refer above.
 pub fn texnote(db: &mut SqliteConnection, title: &str, path: Option<String>) -> Res<File> {
     let mut f = File::create(format!(
         "{}{}/tex/{}.tex",
@@ -401,6 +402,8 @@ pub fn texnote(db: &mut SqliteConnection, title: &str, path: Option<String>) -> 
 }
 
 fn compile(title: &str, path: Option<String>) -> Res<Option<File>> {
+    fs::create_dir(&format!("{DATABASE_DIR}/tex"))?;
+    fs::create_dir(&format!("{DATABASE_DIR}/pdf"))?;
     let c = process::Command::new("lualatex")
         .current_dir(format!("{}{}", env::var("HOME")?, DATABASE_DIR))
         .args(["--output-directory=pdf", &format!("tex/{title}.tex")])
