@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::{schema::*, Null, Pool, Res};
-// This be on mac.
+// This be on mac. Could not find what it was on windows.
 const DATABASE_DIR: &str =
     "/Library/Group Containers/9K33E3U3T4.net.shinyfrog.bear/Application Data";
 use diesel::{prelude::*, r2d2::ConnectionManager};

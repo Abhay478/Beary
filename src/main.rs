@@ -84,7 +84,6 @@ pub enum Commands {
 }
 
 fn main() -> Null {
-    dotenvy::dotenv()?;
     let pool = connect()?;
     let args = Args::parse();
 
