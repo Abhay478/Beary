@@ -1,19 +1,18 @@
 #![allow(dead_code)]
 use crate::{schema::*, Null, Pool, Res};
-// use argon2::{Argon2, password_hash::SaltString, PasswordHasher};
-use argon2::Argon2;
+// This be on mac.
 const DATABASE_DIR: &str =
     "/Library/Group Containers/9K33E3U3T4.net.shinyfrog.bear/Application Data";
 use diesel::{prelude::*, r2d2::ConnectionManager};
+use rust_texas::*;
 use std::{
     env,
     fs::File,
     io::{Read, Write},
-    process,
+    process, fmt::Display,
 };
-// use Texas::{component::*, document::*, *};
-use Texas::*;
 
+/// Annoying Optional Strings
 #[derive(Debug, Queryable)]
 #[diesel(table_name = ZSFNOTE)]
 pub struct Note {
@@ -22,6 +21,8 @@ pub struct Note {
     #[diesel(column_name = ZTEXT)]
     pub text: Option<String>,
 }
+
+/// Much better, just strings
 #[derive(Debug)]
 pub struct SureNote {
     title: String,
@@ -29,6 +30,7 @@ pub struct SureNote {
     tags: Vec<String>,
 }
 
+/// A collection of notes with a title
 #[derive(Debug)]
 pub struct Folder {
     elements: Vec<SureNote>,
@@ -41,7 +43,8 @@ pub fn connect() -> Res<Pool> {
     Ok(r2d2::Pool::builder().build(cn)?)
 }
 
-pub fn load_by_tags(db: &mut SqliteConnection, v: Vec<String>) -> Res<Vec<SureNote>> {
+/// Returns a Folder (maybe?) with a bunch of notes that are tagged with ANY of the ones you want.
+pub fn load_by_tags(db: &mut SqliteConnection, v: Vec<&str>) -> Res<Folder> {
     use self::ZSFNOTE::dsl::*;
     let mut out: Vec<Vec<Note>> = vec![];
     for s in v.iter() {
@@ -52,18 +55,24 @@ pub fn load_by_tags(db: &mut SqliteConnection, v: Vec<String>) -> Res<Vec<SureNo
                 .get_results::<Note>(db)?,
         );
     }
-    let out = out
+    let mut out = out
         .into_iter()
         .flatten()
         .filter(|x| x.title.is_some() && x.text.is_some())
         .map(|n| parse_note(n))
         .collect::<Vec<_>>();
 
-    Ok(out)
+    // removes duplicate notes. Note, this uses the same uniqueness criterion as Bear itself.
+    out.dedup_by(|a, b| a.title == b.title);
+    let title = v.iter().map(|s| format!("<{}>", s)).collect();
 
-    // todo!()
+    Ok(Folder {
+        elements: out,
+        title,
+    })
 }
 
+/// One note, straightforward query.
 pub fn load_by_title(db: &mut SqliteConnection, title: &str) -> Res<SureNote> {
     use self::ZSFNOTE::dsl::*;
 
@@ -89,7 +98,6 @@ fn parse_note(n: Note) -> SureNote {
                 format!("{}\n", s)
             }
         })
-        // .map(|s| s.replace("*", "**").replace("/", "*"))
         .collect::<String>();
 
     SureNote {
@@ -100,6 +108,7 @@ fn parse_note(n: Note) -> SureNote {
     // todo!()
 }
 
+/// Refer indexing system. Loads everything from the index file named `part`.
 pub fn load_part(db: &mut SqliteConnection, part: &str) -> Res<Folder> {
     use self::ZSFNOTE::dsl::*;
     let note = parse_note(
@@ -111,10 +120,12 @@ pub fn load_part(db: &mut SqliteConnection, part: &str) -> Res<Folder> {
     let ind = parse_index(&note);
 
     match ind {
+        // part is only one note.
         None => Ok(Folder {
             elements: vec![note],
             title: part.to_string(),
         }),
+        // part is part.
         Some(ind) => {
             let mut out = Vec::with_capacity(ind.elements.len());
 
@@ -135,6 +146,7 @@ pub fn load_part(db: &mut SqliteConnection, part: &str) -> Res<Folder> {
     }
 }
 
+/// Reads the index, if it indeed is an index.
 pub struct IndexNode {
     pub elements: Vec<String>,
     pub title: String,
@@ -172,6 +184,7 @@ fn get_tags(note: &String) -> Vec<String> {
         .collect()
 }
 
+/// Loads bunch of parts. Refer indexing system.
 pub fn load_book(db: &mut SqliteConnection, title: &str) -> Res<Vec<Folder>> {
     use self::ZSFNOTE::dsl::*;
     let s: SureNote = parse_note(
@@ -197,7 +210,23 @@ pub struct Count {
     pub words: Option<usize>,
     pub lines: Option<usize>,
 }
+impl Display for Count {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(x) = self.lines {
+            writeln!(f, "Lines: {}", x)?;
+        }
+        if let Some(x) = self.words {
+            writeln!(f, "Words: {}", x)?;
+        }
+        if let Some(x) = self.characters {
+            writeln!(f, "Characters: {}", x)?;
+        }
 
+        Ok(())
+    }
+}
+
+/// The feature that started all this - count words in all notes that share a tag.
 pub fn word_count(db: &mut SqliteConnection, title: &str, counter: &mut Count) -> Null {
     use self::ZSFNOTE::dsl::*;
     let notbook: Vec<Note> = ZSFNOTE
@@ -241,6 +270,7 @@ pub fn word_count(db: &mut SqliteConnection, title: &str, counter: &mut Count) -
     // todo!()
 }
 
+/// Converts book to latex.
 pub fn latexit(
     db: &mut SqliteConnection,
     title: &str,
@@ -343,6 +373,7 @@ fn parse_text(text: &mut String) -> Vec<Component> {
     // todo!()
 }
 
+/// Exports a single note to pdf.
 pub fn texnote(db: &mut SqliteConnection, title: &str, path: Option<String>) -> Res<File> {
     let mut f = File::create(format!(
         "{}{}/tex/{}.tex",
@@ -402,14 +433,14 @@ fn compile(title: &str, path: Option<String>) -> Res<Option<File>> {
     Ok(f)
 }
 
-pub fn configure(pwd: String) -> Null {
-    let mut f = File::create(&format!("{}/.config/bear", env::var("HOME")?))?;
-    let salt = b"this_is_not_a_salt";
-    let mut out = [0u8; 32];
-    Argon2::default()
-        .hash_password_into(pwd.as_bytes(), salt, &mut out)
-        .unwrap();
-    f.write_all(&mut out)?;
-    f.flush()?;
-    Ok(())
-}
+// pub fn configure(pwd: String) -> Null {
+//     let mut f = File::create(&format!("{}/.config/bear", env::var("HOME")?))?;
+//     let salt = b"this_is_not_a_salt";
+//     let mut out = [0u8; 32];
+//     Argon2::default()
+//         .hash_password_into(pwd.as_bytes(), salt, &mut out)
+//         .unwrap();
+//     f.write_all(&mut out)?;
+//     f.flush()?;
+//     Ok(())
+// }

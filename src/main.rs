@@ -1,3 +1,29 @@
+//! Well, hello there.
+//! 
+//! So some of you may know my rust-texas (formerly Texas) crate - well, 
+//! I wrote that so I could write this.
+//! If you don't, that's okay. It's pretty small. If you want to programmatically 
+//! generate latex files, you might want to check it out, along with `tex-rs` 
+//! 
+//! 
+//! I've used Bear quite a bit and what always annoyed me was that the txt and rtf 
+//! formats weren't really as clean or expressive as the note itself, and we needed pro to 
+//! export to pdf.
+//! 
+//! So, I did it myself.
+//! 
+//! This requires an installed lualatex compiler, because one of the functions fork/exec'   s it.
+//! You absolutely need it.
+//! 
+//! Also, I'm almost certain that I've made some rookie mistakes in here in terms of 
+//! performance and code cleanliness (diesel is kinda ugly sometimes, but it's not just that),
+//! so if there's a bug or if something bugs you, please put up an issue.
+//! 
+//! Peace.
+//! 
+
+
+
 use clap::{Parser, Subcommand};
 use diesel::{r2d2::ConnectionManager, SqliteConnection};
 use std::error::Error;
@@ -20,6 +46,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Word count for all notes with a tag.
     WC {
         title: String,
         #[arg(short)]
@@ -29,9 +56,13 @@ pub enum Commands {
         #[arg(short)]
         c: bool,
     },
-    Collate {
-        title: String,
-    },
+
+    // Collate {
+    //     title: String,
+    // },
+
+    /// Exports an entire book to pdf.
+    /// Might add other target?
     Texdump {
         title: String,
         #[arg(short, long)]
@@ -39,9 +70,12 @@ pub enum Commands {
         #[arg(short, long)]
         author: Option<String>,
     },
-    Password {
-        pwd: String,
-    },
+    // Password {
+    //     pwd: String,
+    // },
+
+    /// Exports a single note to pdf.
+    /// Might add other target?
     Export {
         title: String,
         #[arg(short, long)]
@@ -55,11 +89,6 @@ fn main() -> Null {
     let args = Args::parse();
 
     match args.command.unwrap() {
-        Commands::Collate { title } => {
-            // dbg!(&tag);
-            let x = load_book(&mut pool.get().unwrap(), &title)?;
-            dbg!(x);
-        }
         Commands::WC { title, l, w, c } => {
             let mut counter = Count {
                 lines: if l { Some(0) } else { None },
@@ -76,7 +105,8 @@ fn main() -> Null {
             }
 
             word_count(&mut pool.get().unwrap(), &title, &mut counter)?;
-            dbg!(counter);
+            // dbg!(counter);
+            println!("{}", counter);
         }
         Commands::Texdump {
             title,
@@ -93,9 +123,10 @@ fn main() -> Null {
                 },
             )?;
         }
-        Commands::Password { pwd } => {
-            configure(pwd)?;
-        }
+        // Want to learn more about how password protection works before trying this, don't want to nuke the databse.
+        // Commands::Password { pwd } => {
+        //     configure(pwd)?;
+        // }
         Commands::Export { title, path } => {
             texnote(&mut pool.get().unwrap(), &title, path)?;
         }
